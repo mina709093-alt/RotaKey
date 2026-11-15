@@ -1,0 +1,49 @@
+name: 릴리스 자동 생성
+
+# 애드온 폴더의 .toc 에 적힌 ## Version 이 새 번호이면
+# zip 을 만들어 GitHub 릴리스로 올립니다. (WowUp 이 이 릴리스를 받아 갑니다)
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: 애드온 폴더와 버전 읽기
+        id: meta
+        run: |
+          TOC=$(ls */*.toc | head -n1)
+          ADDON=$(dirname "$TOC")
+          VERSION=$(grep -m1 '^## Version:' "$TOC" | sed 's/^## Version:[[:space:]]*//' | tr -d '\r')
+          echo "addon=$ADDON" >> "$GITHUB_OUTPUT"
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+          echo "애드온: $ADDON  버전: $VERSION"
+
+      - name: 같은 버전 릴리스가 있는지 확인
+        id: check
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          if gh release view "v${{ steps.meta.outputs.version }}" >/dev/null 2>&1; then
+            echo "exists=true" >> "$GITHUB_OUTPUT"
+            echo "이미 있는 버전이라 건너뜁니다."
+          else
+            echo "exists=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: zip 만들고 릴리스 올리기
+        if: steps.check.outputs.exists == 'false'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          A="${{ steps.meta.outputs.addon }}"
+          V="${{ steps.meta.outputs.version }}"
+          zip -r -X "$A-$V.zip" "$A"
+          gh release create "v$V" "$A-$V.zip" --title "$A $V" --notes "$A $V"
