@@ -6,12 +6,14 @@
 --   1) 같은 길드 / 파티 / 공격대에 있는 상수팩 사용자끼리 애드온 버전을 주고받습니다. (애드온 메시지, 화면에 보이지 않음)
 --   2) 내 애드온보다 새 버전을 가진 사람이 있으면, 채팅창에 업데이트 알림(WowUp 안내)을 띄우고 30분마다 다시 알려 줍니다.
 --   3) /상수팩 : 설치된 상수팩 애드온과 버전, 알려진 최신 버전을 보여 줍니다.
+--   4) 업데이트 후 첫 접속(또는 첫 /리)에 한 번만, 바뀐 애드온 이름과 [업데이트 내역 보기] 링크를 채팅창에 띄웁니다.
+--      링크를 누르거나 /상수팩 내역 을 입력하면 내역 창이 열립니다. (내역 글은 각 애드온 파일 안에 들어 있음)
 --
 -- 한계: 와우 애드온은 인터넷에 접속할 수 없습니다. 그래서 새 버전을 쓰는 사람이
 --       같은 길드나 파티에 함께 접속해 있을 때만 업데이트를 알 수 있습니다.
 
 local ADDON_NAME = ...
-local MODULE_VERSION = 3
+local MODULE_VERSION = 4
 
 local SP = _G.SangsuPack
 if not SP or (SP.moduleVersion or 0) < MODULE_VERSION then
@@ -259,9 +261,139 @@ if not SP or (SP.moduleVersion or 0) < MODULE_VERSION then
         self.copyBox.eb:HighlightText()
     end
 
+
+    -----------------------------------------------------------------------
+    -- 업데이트 내역 (모듈 4)
+    --   각 애드온이 SangsuPack:RegisterChangelog("폴더명", { { ver = "0.19.0", "줄1", "줄2" }, ... }) 로 등록
+    --   (새 버전이 위로). 마지막으로 본 버전은 SangsuPackDB.seen[폴더명] 에 저장되어, 한 번 보여준 뒤에는 나오지 않습니다.
+    -----------------------------------------------------------------------
+    SP.changelogs = SP.changelogs or {}
+    SP.baseline = SP.baseline or {}
+    -- since: 이 번호가 도입되기 전에 설치돼 있던 사람에게는 이 버전 이후 내역만 보여 줌 (처음 도입 시 한 번)
+    function SP:RegisterChangelog(addon, list, since)
+        if addon and type(list) == "table" then
+            self.changelogs[addon] = list
+            if since then self.baseline[addon] = since end
+        end
+    end
+
+    local LINK = "sangsupack:log"
+
+    -- 이번에 처음 보는 업데이트: { {addon, title, version, from}, ... }
+    function SP:CollectUpdated()
+        SangsuPackDB = SangsuPackDB or {}
+        SangsuPackDB.seen = SangsuPackDB.seen or {}
+        local seen, list = SangsuPackDB.seen, {}
+        for name, info in pairs(self.addons) do
+            local prev = seen[name]
+            if self.changelogs[name] and (prev == nil or SP.Compare(prev, info.version) < 0) then
+                list[#list + 1] = { addon = name, title = info.title, version = info.version, from = prev or self.baseline[name] }
+            end
+            seen[name] = info.version
+        end
+        table.sort(list, function(a, b) return a.title < b.title end)
+        return list
+    end
+
+    function SP:CheckUpdated()
+        if self.updateChecked then return end
+        self.updateChecked = true
+        local list = self:CollectUpdated()
+        if #list == 0 then return end
+        self.lastUpdated = list
+        local names = {}
+        for _, u in ipairs(list) do names[#names + 1] = u.title .. " " .. u.version end
+        self.Print("|cffffd200업데이트됨:|r " .. table.concat(names, ", "))
+        DEFAULT_CHAT_FRAME:AddMessage("|Hsangsupack:log|h|cff66ccff[업데이트 내역 보기]|r|h")
+    end
+
+    -- 내역 글 만들기: from 보다 새롭고 현재 버전 이하인 항목을 모아 줌
+    local function BuildLogText(list)
+        local out = {}
+        for _, u in ipairs(list) do
+            out[#out + 1] = "|cffffd200" .. u.title .. "  " .. u.version .. "|r"
+            local entries = SP.changelogs[u.addon] or {}
+            local shown = 0
+            for _, e in ipairs(entries) do
+                local newer = (u.from == nil) or SP.Compare(e.ver, u.from) > 0
+                if newer and SP.Compare(e.ver, u.version) <= 0 then
+                    out[#out + 1] = "|cff66ccff" .. e.ver .. "|r" .. (e.date and ("  (" .. e.date .. ")") or "")
+                    for _, line in ipairs(e) do out[#out + 1] = "  - " .. line end
+                    shown = shown + 1
+                end
+            end
+            if shown == 0 and entries[1] then
+                out[#out + 1] = "|cff66ccff" .. entries[1].ver .. "|r"
+                for _, line in ipairs(entries[1]) do out[#out + 1] = "  - " .. line end
+            end
+            out[#out + 1] = ""
+        end
+        return table.concat(out, "\n")
+    end
+
+    function SP:ShowChangelog()
+        local list = self.lastUpdated
+        if not list or #list == 0 then
+            -- 방금 업데이트된 게 없으면 등록된 모든 애드온의 최근 내역을 보여 줌
+            list = {}
+            for name, info in pairs(self.addons) do
+                if self.changelogs[name] then
+                    list[#list + 1] = { addon = name, title = info.title, version = info.version, from = nil }
+                end
+            end
+            table.sort(list, function(a, b) return a.title < b.title end)
+        end
+        if #list == 0 then self.Print("등록된 업데이트 내역이 없습니다.") return end
+        if not self.logFrame then
+            local f = CreateFrame("Frame", "SangsuPackLogFrame", UIParent, "BasicFrameTemplateWithInset")
+            f:SetSize(520, 420)
+            f:SetPoint("CENTER", 0, 20)
+            f:SetFrameStrata("DIALOG")
+            f:SetMovable(true)
+            f:EnableMouse(true)
+            f:RegisterForDrag("LeftButton")
+            f:SetScript("OnDragStart", f.StartMoving)
+            f:SetScript("OnDragStop", f.StopMovingOrSizing)
+            local title = f.TitleText or f:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
+            if not f.TitleText then title:SetPoint("TOP", 0, -5) end
+            title:SetText("상수팩 업데이트 내역")
+            local sf = CreateFrame("ScrollFrame", "SangsuPackLogScroll", f, "UIPanelScrollFrameTemplate")
+            sf:SetPoint("TOPLEFT", 12, -30)
+            sf:SetPoint("BOTTOMRIGHT", -32, 12)
+            local child = CreateFrame("Frame", nil, sf)
+            child:SetSize(450, 10)
+            sf:SetScrollChild(child)
+            local fs = child:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
+            fs:SetPoint("TOPLEFT", 0, 0)
+            fs:SetWidth(450)
+            fs:SetJustifyH("LEFT")
+            fs:SetJustifyV("TOP")
+            f.fs, f.child = fs, child
+            tinsert(UISpecialFrames, "SangsuPackLogFrame")
+            self.logFrame = f
+        end
+        local f = self.logFrame
+        f.fs:SetText(BuildLogText(list))
+        f.child:SetHeight((f.fs:GetStringHeight() or 300) + 10)
+        f:Show()
+    end
+
+    if not SP.linkHooked and hooksecurefunc then
+        SP.linkHooked = true
+        hooksecurefunc("SetItemRef", function(link)
+            if link == LINK then
+                local sp = _G.SangsuPack
+                if sp and sp.ShowChangelog then sp:ShowChangelog() end
+            end
+        end)
+    end
+
     SLASH_SANGSUPACK1 = "/상수팩"
     SLASH_SANGSUPACK2 = "/sangsupack"
-    SlashCmdList["SANGSUPACK"] = function() SP:ShowStatus() end
+    SlashCmdList["SANGSUPACK"] = function(msg)
+        msg = (msg or ""):gsub("^%s+", ""):gsub("%s+$", "")
+        if msg == "내역" or msg == "log" or msg == "changelog" then SP:ShowChangelog() else SP:ShowStatus() end
+    end
 
     -----------------------------------------------------------------------
     -- 이벤트 (한 번만 생성)
@@ -291,6 +423,7 @@ if not SP or (SP.moduleVersion or 0) < MODULE_VERSION then
                 self.announced = true
                 C_Timer.After(15, function() SP:BroadcastAll() end)
             end
+            C_Timer.After(6, function() SP:CheckUpdated() end)
         elseif event == "GROUP_ROSTER_UPDATE" then
             local g = GroupChannel()
             if not g then return end
