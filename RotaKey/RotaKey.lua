@@ -1,4 +1,4 @@
--- 매크로메이커 (RotaKey) 0.9.0
+-- 매크로메이커 (RotaKey) 0.10.0
 -- 그룹별 스킬 로테이션을 퀵슬롯 매크로 아이콘 하나로 실행
 -- /castsequence reset=target/combat 매크로 (대상이 바뀌거나 전투가 끝나면 1번부터)
 
@@ -1635,6 +1635,15 @@ if UseAction then
         end
     end)
 end
+
+-- 퀵클릭(QuickClick.lua)에서 같은 창과 디자인을 쓰기 위해 내보내기
+RotaKeyUI = {
+    F = F, left = left, right = right, subTitle = subTitle,
+    Txt = Txt, SetF = SetF, flat = flat, makeButton = makeButton, makeCheck = makeCheck,
+    makeEdit = makeEdit, iconTextButton = iconTextButton, setTex = setTex, out = out,
+    C = { BG = C_BG, PANEL = C_PANEL, EDGE = C_EDGE, TEXT = C_TEXT, MUTED = C_MUTED, ACCENT = C_ACCENT, BTN = C_BTN },
+    DB = function() return DB end,
+}
 
 SLASH_ROTAKEY1 = "/rk"
 SLASH_ROTAKEY2 = "/rotakey"

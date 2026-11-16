@@ -1,10 +1,11 @@
 ## Interface: 16001
 ## Title: 매크로메이커 (RotaKey)
-## Notes: 스킬 순서를 그룹별로 구성하고, 퀵슬롯 아이콘 하나로 연타 실행
+## Notes: 스킬 순서를 그룹별로 구성하고, 퀵슬롯 아이콘 하나로 연타 실행 · 퀵클릭(파티창 클릭 시전)
 ## Author: 상수
-## Version: 0.9.1
+## Version: 0.10.0
 ## Category: 상수팩
 ## SavedVariablesPerCharacter: RotaKeyDB
 
 SangsuPack.lua
 RotaKey.lua
+QuickClick.lua
