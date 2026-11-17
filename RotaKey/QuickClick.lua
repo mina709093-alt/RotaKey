@@ -177,7 +177,7 @@ local function apply()
                 end
             end
         end
-        if f.RegisterForClicks then f:RegisterForClicks("AnyUp") end
+        -- 블리자드 창의 클릭 등록(누름/뗌)은 건드리지 않는다: "누를 때 실행" 설정과 맞물려 클릭이 안 먹힐 수 있음
         hookLog(f)
         count = count + 1
     end

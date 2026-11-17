@@ -2,6 +2,9 @@
 if not SangsuPack or not SangsuPack.RegisterChangelog then return end
 
 SangsuPack:RegisterChangelog("RotaKey", {
+  { ver = "0.10.1",
+    "퀵클릭이 파티창의 원래 클릭 설정을 바꾸지 않도록 고쳤습니다. (게임의 '누를 때 실행' 설정과 함께 쓸 때 클릭이 안 먹히는 문제 예방)",
+  },
   { ver = "0.10.0",
     "퀵클릭 탭 추가: 파티창·내 초상화·공격대창을 클릭하면 퀵슬롯에 없어도 바로 주문이 시전됩니다. (Clique 방식)",
     "Shift/Ctrl/Alt 조합과 왼쪽·오른쪽·가운데·4·5번 버튼을 자유롭게 섞어 등록할 수 있습니다.",
