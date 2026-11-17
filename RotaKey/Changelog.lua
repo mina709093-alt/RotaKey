@@ -2,6 +2,9 @@
 if not SangsuPack or not SangsuPack.RegisterChangelog then return end
 
 SangsuPack:RegisterChangelog("RotaKey", {
+  { ver = "0.11.2",
+    "상세옵션: 명령어/대상/조건 더 보기 목록이 한 번 열리면 닫히지 않던 문제를 고쳤습니다. 버튼을 다시 누르거나 목록 바깥을 누르면 닫힙니다.",
+  },
   { ver = "0.11.1",
     "상세옵션: 명령어 고르기 목록에서 긴 설명이 두 줄로 넘어가 글씨가 겹치던 문제를 고쳤습니다. 자세한 예시는 마우스를 올리면 나옵니다.",
     "고르기 칸 오른쪽 화살표가 네모(▯)로 보이던 문제를 고쳤습니다.",

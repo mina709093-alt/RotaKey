@@ -264,8 +264,20 @@ local menu = CreateFrame("Frame", nil, A, "BackdropTemplate")
 menu:SetFrameLevel(A:GetFrameLevel() + 30)
 UI.flat(menu, C.PANEL)
 menu:Hide()
+-- 메뉴 바깥을 누르면 닫기 (상세옵션 패널 전체를 덮는 투명 판)
+local catcher = CreateFrame("Button", nil, A)
+catcher:SetAllPoints(A)
+catcher:SetFrameLevel(A:GetFrameLevel() + 29)
+catcher:RegisterForClicks("AnyUp")
+catcher:SetScript("OnClick", function() GameTooltip:Hide(); menu:Hide() end)
+catcher:Hide()
+menu:SetScript("OnShow", function() catcher:Show() end)
+menu:SetScript("OnHide", function() catcher:Hide(); menu.anchor = nil end)
 local menuBtns = {}
 local function OpenMenu(anchor, items, onPick, width)
+  -- 같은 버튼을 다시 누르면 닫기
+  if menu:IsShown() and menu.anchor == anchor then menu:Hide() return end
+  menu.anchor = anchor
   for _, b in ipairs(menuBtns) do b:Hide() end
   local n = #items
   local cols = n > 14 and 2 or 1
