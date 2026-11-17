@@ -14,15 +14,15 @@ local F, Txt, C, out = UI.F, UI.Txt, UI.C, UI.out
 ---------------------------------------------------------------------------
 local COMMANDS = {
   { "/cast", "주문 시전", true }, { "/use", "아이템/주문 사용", true },
-  { "/castsequence", "순서대로 시전 (예: reset=target 주문1, 주문2)" }, { "/castrandom", "무작위로 하나 시전 (주문1, 주문2)" },
-  { "/startattack", "자동 공격 시작" }, { "/stopattack", "자동 공격 멈춤" }, { "/stopmacro", "조건이 맞으면 여기서 매크로 끝" },
+  { "/castsequence", "순서대로 시전", nil, "예: /castsequence reset=target 주문1, 주문2" }, { "/castrandom", "무작위로 하나 시전", nil, "예: /castrandom 주문1, 주문2" },
+  { "/startattack", "자동 공격 시작" }, { "/stopattack", "자동 공격 멈춤" }, { "/stopmacro", "조건 맞으면 매크로 끝", nil, "조건이 맞으면 이 줄에서 매크로를 멈춥니다" },
   { "/stopcasting", "시전 중인 주문 취소" }, { "/targetenemy", "가까운 적 대상 잡기" }, { "/targetfriend", "가까운 아군 대상 잡기" },
   { "/targetlasttarget", "이전 대상" }, { "/target", "이름으로 대상 잡기" }, { "/cleartarget", "대상 해제" },
   { "/assist", "대상의 대상 잡기" }, { "/cancelaura", "버프 취소 (버프 이름)" }, { "/cancelform", "변신/태세 해제" },
   { "/dismount", "탈것에서 내리기" }, { "/petattack", "소환수 공격" }, { "/petfollow", "소환수 따라오기" },
   { "/petpassive", "소환수 가만히" }, { "/petdefensive", "소환수 방어" }, { "/petassist", "소환수 지원" }, { "/petstay", "소환수 대기" },
   { "/equip", "장비 착용 (아이템 이름)" }, { "/equipslot", "칸 번호에 장비 착용" }, { "/click", "버튼 클릭 (버튼 이름)" },
-  { "#showtooltip", "아이콘·툴팁을 이 주문으로 표시 (맨 위 줄)" },
+  { "#showtooltip", "아이콘 표시 (맨 위 줄)", nil, "아이콘과 툴팁을 이 주문으로 보여 줍니다. 맨 위 줄에 둡니다" },
 }
 local SPELL_CMD = { ["/cast"] = true, ["/use"] = true }
 
@@ -271,7 +271,8 @@ local function OpenMenu(anchor, items, onPick, width)
   local cols = n > 14 and 2 or 1
   local per = math.ceil(n / cols)
   width = width or 180
-  menu:SetSize(width * cols + 8, per * 18 + 8)
+  local RH = 20
+  menu:SetSize(width * cols + 8, per * RH + 8)
   menu:ClearAllPoints()
   menu:SetPoint("TOPRIGHT", anchor, "BOTTOMRIGHT", 0, -2)
   for i, it in ipairs(items) do
@@ -280,17 +281,24 @@ local function OpenMenu(anchor, items, onPick, width)
       b = CreateFrame("Button", nil, menu, "BackdropTemplate")
       b:SetBackdrop({ bgFile = "Interface\\Buttons\\WHITE8x8" })
       b.t = Txt(b, 11); b.t:SetPoint("LEFT", 4, 0); b.t:SetJustifyH("LEFT")
-      b:SetScript("OnEnter", function(self) self:SetBackdropColor(C.ACCENT[1], C.ACCENT[2], C.ACCENT[3], 0.5) end)
-      b:SetScript("OnLeave", function(self) self:SetBackdropColor(0, 0, 0, 0) end)
+      b.t:SetWordWrap(false)
+      if b.t.SetMaxLines then b.t:SetMaxLines(1) end
+      b:SetScript("OnEnter", function(self)
+        self:SetBackdropColor(C.ACCENT[1], C.ACCENT[2], C.ACCENT[3], 0.5)
+        if self.tip then GameTooltip:SetOwner(self, "ANCHOR_RIGHT"); GameTooltip:SetText(self.tip, 1, 1, 1, 1, true); GameTooltip:Show() end
+      end)
+      b:SetScript("OnLeave", function(self) self:SetBackdropColor(0, 0, 0, 0); GameTooltip:Hide() end)
       menuBtns[i] = b
     end
-    b:SetSize(width, 18)
+    b:SetSize(width, RH)
+    b.tip = it.tip
     b:SetBackdropColor(0, 0, 0, 0)
     local col = math.floor((i - 1) / per)
-    b:SetPoint("TOPLEFT", 4 + col * width, -4 - ((i - 1) % per) * 18)
+    b:ClearAllPoints()
+    b:SetPoint("TOPLEFT", 4 + col * width, -4 - ((i - 1) % per) * RH)
     b.t:SetWidth(width - 8)
     b.t:SetText(it.label)
-    b:SetScript("OnClick", function() menu:Hide(); onPick(it.value) end)
+    b:SetScript("OnClick", function() GameTooltip:Hide(); menu:Hide(); onPick(it.value) end)
     b:Show()
   end
   menu:Show()
@@ -301,7 +309,8 @@ local function pickBox(y, w)
   local b = UI.makeButton(prop, "", w or 178, 22)
   b:SetPoint("TOPLEFT", 6, y)
   b.text:ClearAllPoints(); b.text:SetPoint("LEFT", 6, 0); b.text:SetWidth((w or 178) - 20); b.text:SetJustifyH("LEFT")
-  local arrow = Txt(b, 11, false, true); arrow:SetPoint("RIGHT", -6, 0); arrow:SetText("▾")
+  local arrow = b:CreateTexture(nil, "OVERLAY"); arrow:SetSize(12, 12); arrow:SetPoint("RIGHT", -5, 0)
+  arrow:SetTexture("Interface\\ChatFrame\\UI-ChatIcon-ScrollDown-Up"); arrow:SetTexCoord(0.2, 0.8, 0.2, 0.8)
   b:SetScript("OnLeave", function(self) self:SetActive(self.active) end)
   return b
 end
@@ -330,7 +339,7 @@ local function chip(def, i)
   return b
 end
 for i, def in ipairs(CONDS) do chips[i] = chip(def, i) end
-local moreBtn = UI.makeButton(prop, "조건 더 보기 ▾", 178, 20)
+local moreBtn = UI.makeButton(prop, "조건 더 보기 +", 178, 20)
 moreBtn:SetPoint("TOPLEFT", 6, -148 - 4 * 22)
 moreBtn:SetScript("OnLeave", function(self) self:SetActive(self.active) end)
 local extraText = Txt(prop, 10, false, true)
@@ -375,7 +384,7 @@ local function SetP(p) work[sel] = Build(p); Commit() end
 
 cmdBox:SetScript("OnClick", function(self)
   local items = {}
-  for _, c in ipairs(COMMANDS) do items[#items + 1] = { label = c[1] .. "  " .. c[2], value = c[1] } end
+  for _, c in ipairs(COMMANDS) do items[#items + 1] = { label = c[1] .. "  |cffaaaaaa" .. c[2] .. "|r", value = c[1], tip = c[4] and (c[1] .. "\n" .. c[4]) or nil } end
   OpenMenu(self, items, function(v)
     local p = CurP()
     if p.complex then work[sel] = v .. " " .. (p.arg or "") ; Commit() return end

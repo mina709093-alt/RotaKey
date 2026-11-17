@@ -2,6 +2,10 @@
 if not SangsuPack or not SangsuPack.RegisterChangelog then return end
 
 SangsuPack:RegisterChangelog("RotaKey", {
+  { ver = "0.11.1",
+    "상세옵션: 명령어 고르기 목록에서 긴 설명이 두 줄로 넘어가 글씨가 겹치던 문제를 고쳤습니다. 자세한 예시는 마우스를 올리면 나옵니다.",
+    "고르기 칸 오른쪽 화살표가 네모(▯)로 보이던 문제를 고쳤습니다.",
+  },
   { ver = "0.11.0",
     "[상세옵션] 탭 추가 (Razer Synapse 3 방식): 매크로를 줄 단위로 직접 고칠 수 있습니다. 그룹 이름 오른쪽 [상세옵션]을 누르세요.",
     "줄 목록(끌어서 순서 변경, 추가/복제/삭제) + 명령어·주문·대상·조건 고르기(마우스를 올리면 설명) + 미리보기와 글자 수 표시.",
