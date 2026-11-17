@@ -160,12 +160,58 @@ tBasic:SetPoint("RIGHT", tAdv, "LEFT", -4, 0)
 local badge = Txt(right, 11, true)
 badge:SetPoint("RIGHT", tBasic, "LEFT", -8, 0)
 
+-- 상세 그룹일 때 기본 탭을 덮는 안내판 (빈 슬롯을 잘못 건드려 상세 내용이 사라지지 않게)
+local cover = CreateFrame("Frame", nil, right, "BackdropTemplate")
+cover:SetPoint("TOPLEFT", 0, -88)
+cover:SetPoint("BOTTOMRIGHT", 0, 52)
+cover:SetFrameLevel(right:GetFrameLevel() + 19)
+UI.flat(cover, C.BG)
+cover:EnableMouse(true)
+cover:Hide()
+local coverTitle = Txt(cover, 13, true)
+coverTitle:SetPoint("TOPLEFT", 10, -10)
+coverTitle:SetText("|cffe6c229상세옵션으로 만든 매크로예요|r")
+local coverHelp = Txt(cover, 11, false, true)
+coverHelp:SetPoint("TOPLEFT", 10, -32)
+coverHelp:SetPoint("RIGHT", -10, 0)
+coverHelp:SetJustifyH("LEFT")
+coverHelp:SetText("기본 탭의 슬롯은 쓰지 않습니다. 내용을 고치려면 [상세옵션에서 고치기]를 누르세요.")
+local coverBox = CreateFrame("Frame", nil, cover, "BackdropTemplate")
+coverBox:SetPoint("TOPLEFT", 10, -54)
+coverBox:SetPoint("BOTTOMRIGHT", -10, 42)
+UI.flat(coverBox, C.PANEL)
+local coverLines = Txt(coverBox, 12)
+coverLines:SetPoint("TOPLEFT", 8, -8)
+coverLines:SetPoint("BOTTOMRIGHT", -8, 8)
+coverLines:SetJustifyH("LEFT")
+coverLines:SetJustifyV("TOP")
+local coverEdit = UI.makeButton(cover, "상세옵션에서 고치기", 150, 24)
+coverEdit:SetPoint("BOTTOMLEFT", 10, 10)
+local coverBasic = UI.makeButton(cover, "기본 방식으로 바꾸기", 150, 24)
+coverBasic:SetPoint("LEFT", coverEdit, "RIGHT", 8, 0)
+coverBasic:SetScript("OnEnter", function(self)
+  GameTooltip:SetOwner(self, "ANCHOR_TOP")
+  GameTooltip:SetText("상세 내용을 보관해 두고 슬롯 방식으로 바꿉니다.\n상세옵션의 '이전 상세 내용 복원'으로 되돌릴 수 있어요.", 1, 1, 1, 1, true)
+  GameTooltip:Show()
+end)
+coverBasic:SetScript("OnLeave", function(self) self:SetActive(self.active); GameTooltip:Hide() end)
+
 local function ShowAdv(on)
   A:SetShown(on)
   tBasic:SetActive(not on)
   tAdv:SetActive(on)
-  if on then LoadWork(); Refresh() end
+  if on then LoadWork() end
+  Refresh()
 end
+coverEdit:SetScript("OnClick", function() ShowAdv(true) end)
+coverBasic:SetScript("OnClick", function()
+  local g = G()
+  if not g then return end
+  if g.custom then g.linesBackup = g.lines end
+  g.custom, g.lines = nil, nil
+  UI.markDirty("adv")
+  if F.Refresh then F.Refresh() end
+end)
 tBasic:SetScript("OnClick", function() ShowAdv(false) end)
 tAdv:SetScript("OnClick", function() ShowAdv(true) end)
 tBasic:SetScript("OnLeave", function(self) self:SetActive(self.active) end)
@@ -533,6 +579,13 @@ function Refresh()
   local g = G()
   if not g then return end
   badge:SetText(g.custom and "|cffe6c229상세 그룹|r" or "")
+  local showCover = g.custom and g.lines and not A:IsShown()
+  cover:SetShown(showCover and true or false)
+  if showCover then
+    local t = {}
+    for i, l in ipairs(g.lines) do t[#t + 1] = "|cff6f7a88" .. i .. "|r  " .. l end
+    coverLines:SetText(#t > 0 and table.concat(t, "\n") or "(줄 없음)")
+  end
   if not A:IsShown() then return end
   scroll = math.max(0, math.min(scroll, math.max(0, #work - ROWS)))
   if sel > scroll + ROWS then scroll = sel - ROWS elseif sel <= scroll then scroll = math.max(0, sel - 1) end
