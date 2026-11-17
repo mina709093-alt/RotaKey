@@ -13,7 +13,7 @@ local F, Txt, C, out = UI.F, UI.Txt, UI.C, UI.out
 -- 목록 데이터
 ---------------------------------------------------------------------------
 local COMMANDS = {
-  { "/cast", "주문 시전", true }, { "/use", "아이템/주문 사용", true },
+  { "/cast", "주문 시전", true }, { "/use", "아이템/주문 사용", true, "아이템 이름, 또는 장비 칸 번호\n예: /use 13 (위 장신구), /use 14 (아래 장신구)" },
   { "/castsequence", "순서대로 시전", nil, "예: /castsequence reset=target 주문1, 주문2" }, { "/castrandom", "무작위로 하나 시전", nil, "예: /castrandom 주문1, 주문2" },
   { "/startattack", "자동 공격 시작" }, { "/stopattack", "자동 공격 멈춤" }, { "/stopmacro", "조건 맞으면 매크로 끝", nil, "조건이 맞으면 이 줄에서 매크로를 멈춥니다" },
   { "/stopcasting", "시전 중인 주문 취소" }, { "/targetenemy", "가까운 적 대상 잡기" }, { "/targetfriend", "가까운 아군 대상 잡기" },
@@ -21,10 +21,18 @@ local COMMANDS = {
   { "/assist", "대상의 대상 잡기" }, { "/cancelaura", "버프 취소 (버프 이름)" }, { "/cancelform", "변신/태세 해제" },
   { "/dismount", "탈것에서 내리기" }, { "/petattack", "소환수 공격" }, { "/petfollow", "소환수 따라오기" },
   { "/petpassive", "소환수 가만히" }, { "/petdefensive", "소환수 방어" }, { "/petassist", "소환수 지원" }, { "/petstay", "소환수 대기" },
-  { "/equip", "장비 착용 (아이템 이름)" }, { "/equipslot", "칸 번호에 장비 착용" }, { "/click", "버튼 클릭 (버튼 이름)" },
+  { "/equip", "장비 착용 (아이템 이름)", nil, "한손 무기는 주무기 칸에 들어갑니다" }, { "/equipslot", "칸 번호에 장비 착용", nil, "예: /equipslot 17 아이템이름 (보조장비/방패)\n칸 번호: 1 머리, 6 허리, 8 발, 10 손, 13·14 장신구, 15 망토, 16 주무기, 17 보조장비, 18 원거리" }, { "/click", "버튼 클릭 (버튼 이름)" },
+  { "/p", "파티 채팅", nil, "파티원에게 말합니다. %t 는 대상 이름으로 바뀝니다\n예: /p %t 양 변신 중입니다" },
+  { "/s", "말하기 (일반)", nil, "주변에 말합니다. %t 는 대상 이름" }, { "/y", "외치기", nil, "넓은 범위에 외칩니다. %t 는 대상 이름" },
+  { "/g", "길드 채팅", nil, "%t 는 대상 이름" }, { "/ra", "공격대 채팅", nil, "%t 는 대상 이름" },
+  { "/rw", "공격대 경보", nil, "공격대장/부공대장만 가능. 화면 가운데에 크게 뜹니다" },
+  { "/e", "감정 표현 (직접 쓰기)", nil, "예: /e 이(가) 도발합니다!" }, { "/w", "귓속말", nil, "예: /w 캐릭터이름 할 말" },
+  { "/trade", "대상과 거래창 열기" },
   { "#showtooltip", "아이콘 표시 (맨 위 줄)", nil, "아이콘과 툴팁을 이 주문으로 보여 줍니다. 맨 위 줄에 둡니다" },
 }
 local SPELL_CMD = { ["/cast"] = true, ["/use"] = true }
+-- 주문 대신 말할 내용을 쓰는 명령어
+local CHAT_CMD = { ["/p"] = true, ["/s"] = true, ["/y"] = true, ["/g"] = true, ["/ra"] = true, ["/rw"] = true, ["/e"] = true, ["/w"] = true }
 
 local TARGETS = {
   { "", "기본 (현재 대상)" }, { "@player", "나 자신" }, { "@mouseover", "마우스를 올린 대상" },
@@ -47,7 +55,7 @@ local MORE_CONDS = {
   { "group", "파티/공격대 중" }, { "group:raid", "공격대 중" }, { "pet", "소환수 있음" }, { "nopet", "소환수 없음" },
   { "channeling", "정신 집중 중" }, { "nochanneling", "정신 집중 아님" }, { "indoors", "실내" }, { "outdoors", "실외" },
   { "swimming", "수영 중" }, { "stance:1", "태세/형상 1" }, { "stance:2", "태세/형상 2" }, { "stance:3", "태세/형상 3" },
-  { "nostance", "태세 없음" }, { "form:1", "형상 1" }, { "resting", "휴식 중" }, { "button:2", "오른쪽 클릭으로 눌렀을 때" },
+  { "nostance", "태세 없음" }, { "form:1", "형상 1" }, { "resting", "휴식 중" }, { "button:2", "오른쪽 클릭으로 눌렀을 때" }, { "btn:2", "오른쪽 클릭 (짧은 표기)" }, { "btn:1", "왼쪽 클릭/단축키" },
 }
 local KNOWN_COND = {}
 for _, c in ipairs(CONDS) do KNOWN_COND[c[1]] = c[2] end
@@ -375,13 +383,22 @@ end
 
 label("명령어", -6)
 local cmdBox = pickBox(-20)
-label("주문 (주문책에서 끌어다 놓기)", -48)
+local spellLabel = label("주문 (주문책에서 끌어다 놓기)", -48)
 local spellSlot = CreateFrame("Button", nil, prop, "BackdropTemplate")
 spellSlot:SetSize(178, 24)
 spellSlot:SetPoint("TOPLEFT", 6, -62)
 UI.flat(spellSlot, { 0, 0, 0 })
 spellSlot.icon = spellSlot:CreateTexture(nil, "ARTWORK"); spellSlot.icon:SetSize(20, 20); spellSlot.icon:SetPoint("LEFT", 2, 0)
 spellSlot.t = Txt(spellSlot, 11); spellSlot.t:SetPoint("LEFT", 26, 0); spellSlot.t:SetWidth(148); spellSlot.t:SetJustifyH("LEFT")
+local chatEdit = CreateFrame("EditBox", nil, prop, "BackdropTemplate")
+chatEdit:SetSize(178, 24)
+chatEdit:SetPoint("TOPLEFT", 6, -62)
+UI.flat(chatEdit, { 0, 0, 0 })
+chatEdit:SetFontObject(ChatFontNormal)
+chatEdit:SetTextInsets(6, 6, 0, 0)
+chatEdit:SetAutoFocus(false)
+chatEdit:SetMaxLetters(200)
+chatEdit:Hide()
 label("대상", -92)
 local targetBox = pickBox(-106)
 label("조건 (눌러서 켜기/끄기)", -134)
@@ -513,6 +530,14 @@ local function takeSpell()
   SetP(p)
 end
 spellSlot:SetScript("OnReceiveDrag", takeSpell)
+chatEdit:SetScript("OnEnterPressed", function(self)
+  self:ClearFocus()
+  if not work[sel] then return end
+  local p = CurP()
+  p.arg = strtrim(self:GetText() or "")
+  SetP(p)
+end)
+chatEdit:SetScript("OnEscapePressed", function(self) self:ClearFocus() end)
 spellSlot:SetScript("OnClick", function() if GetCursorInfo() then takeSpell() end end)
 
 rawEdit:SetScript("OnEnterPressed", function(self)
@@ -606,6 +631,11 @@ function Refresh()
   local p = CurP()
   propLabel:SetText(work[sel] and (sel .. "번 줄 속성") or "줄이 없습니다. [+ 줄]로 추가하세요.")
   cmdBox.text:SetText(p.cmd ~= "" and (p.cmd .. "  " .. (KNOWN_CMD[p.cmd] or "")) or "명령어 고르기")
+  local isChat = CHAT_CMD[p.cmd] and true or false
+  spellSlot:SetShown(not isChat)
+  chatEdit:SetShown(isChat)
+  spellLabel:SetText(isChat and "말할 내용 (%t = 대상 이름) · Enter 로 적용" or "주문 (주문책에서 끌어다 놓기)")
+  if isChat and not chatEdit:HasFocus() then chatEdit:SetText(p.arg or "") end
   local sname = (SPELL_CMD[p.cmd] or p.cmd == "#showtooltip") and p.arg or ((p.cmd == "/castsequence" or p.cmd == "/castrandom") and p.arg) or nil
   if sname and sname ~= "" then
     local first = sname:gsub("^reset=%S+%s*", ""):match("^([^,]+)")

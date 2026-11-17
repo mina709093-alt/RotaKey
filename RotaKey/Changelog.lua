@@ -2,6 +2,10 @@
 if not SangsuPack or not SangsuPack.RegisterChangelog then return end
 
 SangsuPack:RegisterChangelog("RotaKey", {
+  { ver = "0.12.0",
+    "상세옵션 명령어에 채팅을 추가했습니다: /p 파티, /s 말하기, /y 외치기, /g 길드, /ra 공격대, /rw 공격대 경보, /e 감정 표현, /w 귓속말, /trade 거래. 채팅 명령어를 고르면 주문 칸 대신 말할 내용을 적는 칸이 나옵니다. (%t = 대상 이름)",
+    "/use, /equip, /equipslot 에 장비 칸 번호 안내를 넣었고, 조건 목록에 btn:1, btn:2 를 추가했습니다.",
+  },
   { ver = "0.11.3",
     "상세옵션으로 만든 그룹은 기본 탭에 빈 슬롯 대신 매크로 내용과 [상세옵션에서 고치기] 버튼이 나옵니다. 빈 슬롯을 잘못 눌러 상세 내용이 사라지는 일이 없어졌습니다.",
     "슬롯 방식으로 돌아가고 싶으면 [기본 방식으로 바꾸기]를 누르세요. 상세 내용은 보관되어 되돌릴 수 있습니다.",
