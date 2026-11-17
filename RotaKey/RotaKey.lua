@@ -1,4 +1,4 @@
--- 매크로메이커 (RotaKey) 0.10.0
+-- 매크로메이커 (RotaKey) 0.11.0
 -- 그룹별 스킬 로테이션을 퀵슬롯 매크로 아이콘 하나로 실행
 -- /castsequence reset=target/combat 매크로 (대상이 바뀌거나 전투가 끝나면 1번부터)
 
@@ -67,7 +67,7 @@ local function isCond(g, i) return g.conds and g.conds[i] ~= nil end
 
 local function condList(g)
     local t = {}
-    if not g.conds then return t end
+    if not g.conds or g.custom then return t end -- 상세 그룹은 조건부 아이콘 대신 줄에서 직접 처리
     for i, id in ipairs(g.slots) do
         local m = g.conds[i]
         local n = m and spellName(id)
@@ -129,6 +129,9 @@ local function seqNames(list)
 end
 
 local function buildBody(g)
+    if g.custom and g.lines then
+        return table.concat(g.lines, "\n"), #g.lines
+    end
     local atk = g.attack and "/startattack\n" or ""
     local conds = condList(g)
     local seq = seqSpells(g)
@@ -467,9 +470,17 @@ local function setStatus(msg, r, g, b)
     statusText:SetTextColor(r or C_ACCENT_HI[1], g or C_ACCENT_HI[2], b or C_ACCENT_HI[3])
 end
 
-local function markDirty()
+-- kind: "name"(이름/아이콘), "adv"(상세옵션 편집), nil(기본 설정: 슬롯·평타·조건)
+local function markDirty(kind)
     local g = G()
-    if g then g.dirty = true end
+    if g then
+        g.dirty = true
+        if g.custom and kind ~= "name" and kind ~= "adv" then
+            g.linesBackup = g.lines
+            g.custom, g.lines = nil, nil
+            out("기본 설정이 바뀌어 이 그룹의 상세옵션 내용을 기본 설정으로 다시 만들었어요. [상세옵션]의 '이전 상세 내용 복원'으로 되돌릴 수 있어요.")
+        end
+    end
     setStatus("변경 사항이 있어요. [저장 / 아이콘 생성]을 눌러야 퀵슬롯 아이콘에 반영됩니다.")
 end
 
@@ -789,7 +800,7 @@ nameEdit:HookScript("OnEditFocusLost", function() F.Refresh() end)
 macroEdit:SetScript("OnTextChanged", function(self, user)
     if not user then return end
     G().macroName = strtrim(self:GetText())
-    markDirty()
+    markDirty("name")
 end)
 
 atkCheck:SetScript("OnClick", function(self)
@@ -866,7 +877,7 @@ local function saveGroup()
     if InCombatLockdown() then setStatus("전투 중에는 저장할 수 없어요. 전투가 끝난 뒤 눌러 주세요.", 0.90, 0.35, 0.32) return end
     local g = G()
     local spells = filledSpells(g)
-    if #spells == 0 then setStatus("슬롯에 스킬을 1개 이상 등록해 주세요.", 0.90, 0.35, 0.32) return end
+    if #spells == 0 and not (g.custom and g.lines and #g.lines > 0) then setStatus("슬롯에 스킬을 1개 이상 등록해 주세요.", 0.90, 0.35, 0.32) return end
     local mname = strtrim(g.macroName or "")
     if mname == "" then setStatus("아이콘 이름을 입력해 주세요.", 0.90, 0.35, 0.32) return end
     for i, o in ipairs(DB.groups) do
@@ -877,7 +888,7 @@ local function saveGroup()
     end
     local body = buildBody(g)
     if #body > MACRO_LIMIT then
-        setStatus(("매크로가 너무 길어요 (%d / %d). 슬롯을 줄여 주세요."):format(#body, MACRO_LIMIT), 0.90, 0.35, 0.32)
+        setStatus(("매크로가 너무 길어요 (%d / %d). %s"):format(#body, MACRO_LIMIT, g.custom and "상세옵션에서 줄을 줄여 주세요." or "슬롯을 줄여 주세요."), 0.90, 0.35, 0.32)
         return
     end
     -- 내 것이 아닌 같은 이름의 매크로가 이미 있으면 덮어쓰지 않음
@@ -1025,7 +1036,7 @@ for i = 1, ICON_COLS * ICON_ROWS do
     c.tex:SetPoint("BOTTOMRIGHT", -2, 2)
     c:SetScript("OnClick", function(self)
         G().icon = self.value
-        markDirty()
+        markDirty("name")
         F.Refresh()
         refreshPicker()
     end)
@@ -1038,7 +1049,7 @@ prevBtn:SetScript("OnClick", function() page = page - 1 refreshPicker() end)
 nextBtn:SetScript("OnClick", function() page = page + 1 refreshPicker() end)
 pAuto:SetScript("OnClick", function()
     G().icon = nil
-    markDirty()
+    markDirty("name")
     F.Refresh()
     refreshPicker()
 end)
@@ -1571,7 +1582,11 @@ ev:SetScript("OnEvent", function(_, e, a1, ...)
                 -- 이 스킬이 들어 있는 그룹과 순서 찾기
                 local where = {}
                 for _, g in ipairs(DB.groups) do
-                    if g.savedMacro then
+                    if g.savedMacro and g.custom and g.lines then
+                        for k, line in ipairs(g.lines) do
+                            if line:find(n, 1, true) then where[#where + 1] = ("%s 상세 %d번 줄"):format(g.name, k) break end
+                        end
+                    elseif g.savedMacro then
                         local list = seqSpells(g)
                         local found = false
                         for k, sp in ipairs(list) do
@@ -1643,6 +1658,12 @@ RotaKeyUI = {
     makeEdit = makeEdit, iconTextButton = iconTextButton, setTex = setTex, out = out,
     C = { BG = C_BG, PANEL = C_PANEL, EDGE = C_EDGE, TEXT = C_TEXT, MUTED = C_MUTED, ACCENT = C_ACCENT, BTN = C_BTN },
     DB = function() return DB end,
+    G = function() return G() end,
+    buildBody = buildBody,
+    markDirty = markDirty,
+    setStatus = setStatus,
+    MACRO_LIMIT = MACRO_LIMIT,
+    copyTable = copyTable,
 }
 
 SLASH_ROTAKEY1 = "/rk"
