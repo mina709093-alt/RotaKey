@@ -2,6 +2,9 @@
 if not SangsuPack or not SangsuPack.RegisterChangelog then return end
 
 SangsuPack:RegisterChangelog("RotaKey", {
+  { ver = "0.12.1",
+    "창 색상을 상수팩 공통 스타일(상수 스타일)로 바꿨습니다. 어두운 청록빛 배경, 1px 검은 테두리, 강조색 #10D0A0.",
+  },
   { ver = "0.12.0",
     "상세옵션 명령어에 채팅을 추가했습니다: /p 파티, /s 말하기, /y 외치기, /g 길드, /ra 공격대, /rw 공격대 경보, /e 감정 표현, /w 귓속말, /trade 거래. 채팅 명령어를 고르면 주문 칸 대신 말할 내용을 적는 칸이 나옵니다. (%t = 대상 이름)",
     "/use, /equip, /equipslot 에 장비 칸 번호 안내를 넣었고, 조건 목록에 btn:1, btn:2 를 추가했습니다.",

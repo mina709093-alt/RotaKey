@@ -166,15 +166,19 @@ end
 ------------------------------------------------------------
 -- 스타일 도우미 (상수의 레벨업 가이드와 같은 스타일)
 ------------------------------------------------------------
-local C_BG = { 0.09, 0.10, 0.13 }
-local C_PANEL = { 0.06, 0.07, 0.09 }
-local C_EDGE = { 0.32, 0.35, 0.40 }
+-- 상수 스타일 색 (Sangsu'sStyle UI 애드온과 같은 색)
+local C_BG = { 0.035, 0.055, 0.065 }
+local C_PANEL = { 0.02, 0.035, 0.042 }
+local C_EDGE = { 0, 0, 0 }
 local C_TEXT = { 0.93, 0.94, 0.96 }
-local C_MUTED = { 0.64, 0.68, 0.74 }
-local C_ACCENT = { 0.30, 0.62, 0.78 }
-local C_ACCENT_HI = { 0.38, 0.70, 0.86 }
-local C_BTN = { 0.20, 0.22, 0.27 }
-local C_BTN_HI = { 0.29, 0.32, 0.38 }
+local C_MUTED = { 0.55, 0.60, 0.63 }
+local C_ACCENT = { 0.063, 0.816, 0.627 }
+local C_ACCENT_HI = { 0.16, 0.88, 0.70 }
+local C_SEL = { 0.045, 0.32, 0.26 }
+local C_SEL_HI = { 0.06, 0.40, 0.32 }
+local C_BTN = { 0.055, 0.085, 0.10 }
+local C_BTN_HI = { 0.08, 0.12, 0.14 }
+local BG_ALPHA = 0.92
 
 -- 레벨업 가이드 글꼴(마루부리)을 쓰고, 없으면 기본 글꼴로
 local FONT_R = "Interface\\AddOns\\KQuestGuide\\fonts\\MaruBuri-Regular.ttf"
@@ -199,7 +203,7 @@ local function flat(f, bg, edge, a)
     bg = bg or C_BG
     edge = edge or C_EDGE
     f:SetBackdrop({ bgFile = "Interface\\Buttons\\WHITE8x8", edgeFile = "Interface\\Buttons\\WHITE8x8", edgeSize = 1 })
-    f:SetBackdropColor(bg[1], bg[2], bg[3], a or 1)
+    f:SetBackdropColor(bg[1], bg[2], bg[3], a or (bg == C_BG and BG_ALPHA) or 1)
     f:SetBackdropBorderColor(edge[1], edge[2], edge[3], 1)
 end
 
@@ -215,15 +219,17 @@ end
 local function makeButton(parent, text, w, h, primary)
     local b = CreateFrame("Button", nil, parent, "BackdropTemplate")
     b:SetSize(w, h or 24)
-    b:SetBackdrop({ bgFile = "Interface\\Buttons\\WHITE8x8" })
+    b:SetBackdrop({ bgFile = "Interface\\Buttons\\WHITE8x8", edgeFile = "Interface\\Buttons\\WHITE8x8", edgeSize = 1 })
     b.text = Txt(b, 12, primary)
     b.text:SetPoint("CENTER")
     b.text:SetText(text)
     b.primary = primary
     local function paint(self, hover)
         local on = self.primary or self.active
-        local c = on and (hover and C_ACCENT_HI or C_ACCENT) or (hover and C_BTN_HI or C_BTN)
+        local c = on and (hover and C_SEL_HI or C_SEL) or (hover and C_BTN_HI or C_BTN)
         self:SetBackdropColor(c[1], c[2], c[3], 1)
+        if hover then self:SetBackdropBorderColor(C_ACCENT[1], C_ACCENT[2], C_ACCENT[3], 1)
+        else self:SetBackdropBorderColor(0.20, 0.25, 0.28, 1) end
         if on then self.text:SetTextColor(1, 1, 1) else self.text:SetTextColor(C_TEXT[1], C_TEXT[2], C_TEXT[3]) end
         SetF(self.text, 12, on)
     end
@@ -1249,7 +1255,7 @@ local function getMover(b)
     m = CreateFrame("Frame", nil, UIParent, "BackdropTemplate")
     m:SetSize(b:GetWidth(), b:GetHeight())
     m:SetFrameStrata("DIALOG")
-    flat(m, C_ACCENT, C_ACCENT_HI, 0.35)
+    flat(m, C_SEL, C_ACCENT, 0.5)
     m:EnableMouse(true)
     m:SetMovable(true)
     m:SetClampedToScreen(true)
@@ -1313,7 +1319,7 @@ function F.IsMoving() return moving end
 local S = CreateFrame("Frame", "RotaKeyStatus", UIParent, "BackdropTemplate")
 S:SetSize(240, 40)
 S:SetPoint("CENTER", 0, -200)
-flat(S, C_BG, C_EDGE, 0.92)
+flat(S, C_BG, C_EDGE, BG_ALPHA)
 accentLine(S)
 S:SetMovable(true)
 S:EnableMouse(true)
