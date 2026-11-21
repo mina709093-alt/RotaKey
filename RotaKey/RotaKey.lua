@@ -1674,4 +1674,12 @@ RotaKeyUI = {
 
 SLASH_ROTAKEY1 = "/rk"
 SLASH_ROTAKEY2 = "/rotakey"
-SlashCmdList.ROTAKEY = function() F:SetShown(not F:IsShown()) end
+SlashCmdList.ROTAKEY = function(msg)
+    -- /rk 낚시 ... : 원클릭 낚시(Fishing.lua)
+    local cmd, rest = (msg or ""):match("^(%S*)%s*(.-)%s*$")
+    if (cmd == "낚시" or cmd == "fish") and RotaKeyUI and RotaKeyUI.FishCommand then
+        RotaKeyUI.FishCommand(rest)
+        return
+    end
+    F:SetShown(not F:IsShown())
+end
