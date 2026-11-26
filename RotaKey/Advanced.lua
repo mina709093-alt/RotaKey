@@ -36,7 +36,9 @@ local CHAT_CMD = { ["/p"] = true, ["/s"] = true, ["/y"] = true, ["/g"] = true, [
 
 local TARGETS = {
   { "", "기본 (현재 대상)" }, { "@player", "나 자신" }, { "@mouseover", "마우스를 올린 대상" },
-  { "@mouseover*", "마우스 올린 대상 (없으면 현재 대상)" }, { "@target", "현재 대상" }, { "@targettarget", "대상의 대상" },
+  { "@mouseover*", "마우스 올린 대상 (없으면 현재 대상)" },
+  { "@mouseover*help", "마우스 올린 아군 (없으면 현재 대상)" }, { "@mouseover*harm", "마우스 올린 적 (없으면 현재 대상)" },
+  { "@target", "현재 대상" }, { "@targettarget", "대상의 대상" },
   { "@pet", "소환수" }, { "@party1", "파티원 1" }, { "@party2", "파티원 2" }, { "@party3", "파티원 3" }, { "@party4", "파티원 4" },
   { "@cursor", "마우스 위치 (지면 주문)" },
 }
@@ -52,7 +54,7 @@ local CONDS = {
 }
 local MORE_CONDS = {
   { "stealth", "은신 중" }, { "nostealth", "은신 아님" }, { "mounted", "탈것 탐" }, { "nomounted", "탈것 안 탐" },
-  { "group", "파티/공격대 중" }, { "group:raid", "공격대 중" }, { "pet", "소환수 있음" }, { "nopet", "소환수 없음" },
+  { "group", "내가 파티/공격대 중" }, { "group:raid", "내가 공격대 중" }, { "pet", "소환수 있음" }, { "nopet", "소환수 없음" },
   { "channeling", "정신 집중 중" }, { "nochanneling", "정신 집중 아님" }, { "indoors", "실내" }, { "outdoors", "실외" },
   { "swimming", "수영 중" }, { "stance:1", "태세/형상 1" }, { "stance:2", "태세/형상 2" }, { "stance:3", "태세/형상 3" },
   { "nostance", "태세 없음" }, { "form:1", "형상 1" }, { "resting", "휴식 중" }, { "button:2", "오른쪽 클릭으로 눌렀을 때" }, { "btn:2", "오른쪽 클릭 (짧은 표기)" }, { "btn:1", "왼쪽 클릭/단축키" },
@@ -106,6 +108,13 @@ local function Warn(line)
   if p.cmd ~= "" and not KNOWN_CMD[p.cmd] and p.cmd:sub(1, 1) == "/" then return "목록에 없는 명령어: " .. p.cmd end
   if p.cmd == "/run" or p.cmd == "/script" then return "포에버에서 동작하지 않는 명령어" end
   if p.target == "@focus" then return "포에버에서는 주시 대상이 동작하지 않음" end
+  if p.target == "@mouseover" then
+    for _, c in ipairs(p.conds) do
+      if c == "group" or c == "group:raid" then
+        return "group 은 '내가 파티 중'이라는 뜻입니다. 마우스 올린 아군만 고르려면 대상에서 '마우스 올린 아군'을 고르세요"
+      end
+    end
+  end
   for _, c in ipairs(p.conds) do
     local base = c:gsub("^no", "")
     if not KNOWN_COND[c] and not KNOWN_COND[base] and not c:find("^mod") and not c:find("^stance") and not c:find("^form") then
@@ -470,11 +479,21 @@ end)
 
 targetBox:SetScript("OnClick", function(self)
   local items = {}
-  for _, t in ipairs(TARGETS) do items[#items + 1] = { label = t[2] .. (t[1] ~= "" and ("  " .. t[1]:gsub("%*", "")) or ""), value = t[1] } end
+  for _, t in ipairs(TARGETS) do items[#items + 1] = { label = t[2] .. (t[1] ~= "" and ("  " .. t[1]:match("^[^*]*")) or ""), value = t[1] } end
   OpenMenu(self, items, function(v)
     local p = CurP()
     if p.complex then out("이 줄은 구조가 복잡해서 아래 '직접 입력'으로 고쳐 주세요.") return end
-    if v == "@mouseover*" then p.target, p.fallback = "@mouseover", true
+    local kind = v:match("^@mouseover%*(%a+)$")
+    if kind then
+      -- 마우스 올린 아군/적: 아군·적·살아 있음 조건을 새로 정함 (실제 매크로에서는 마우스 대상에만 붙음)
+      local keep = {}
+      for _, c in ipairs(p.conds) do
+        if c ~= "help" and c ~= "harm" and c ~= "nodead" and c ~= "dead" then keep[#keep + 1] = c end
+      end
+      keep[#keep + 1] = kind
+      keep[#keep + 1] = "nodead"
+      p.conds, p.target, p.fallback = keep, "@mouseover", true
+    elseif v == "@mouseover*" then p.target, p.fallback = "@mouseover", true
     else p.target, p.fallback = v, nil end
     SetP(p)
   end, 210)
@@ -647,9 +666,17 @@ function Refresh()
     spellSlot.t:SetText("주문을 끌어다 놓으세요")
   end
   local tl = "기본 (현재 대상)"
+  local moKind = "@mouseover*"
+  if p.target == "@mouseover" and p.fallback then
+    for _, c in ipairs(p.conds) do
+      if c == "help" then moKind = "@mouseover*help" elseif c == "harm" then moKind = "@mouseover*harm" end
+    end
+  end
   for _, t in ipairs(TARGETS) do
     local v = t[1]
-    if (v == "@mouseover*" and p.target == "@mouseover" and p.fallback) or (v ~= "@mouseover*" and v == (p.target or "") and not (v == "@mouseover" and p.fallback)) then tl = t[2] end
+    if p.target == "@mouseover" and p.fallback then
+      if v == moKind then tl = t[2] end
+    elseif v == (p.target or "") then tl = t[2] end
   end
   targetBox.text:SetText(p.complex and "복잡한 줄 (직접 입력으로)" or tl)
   local on = {}
@@ -663,7 +690,10 @@ function Refresh()
   end
   extraText:SetText(#extra > 0 and ("추가 조건: " .. table.concat(extra, ", ")) or "")
   if not rawEdit:HasFocus() then rawEdit:SetText(work[sel] or "") end
-  local body = table.concat(work, "\n")
+  -- 실제로 게임에 들어가는 글 (같은 명령의 조건 줄은 한 줄로 합쳐짐)
+  local body, merged
+  if UI.customBody then body, merged = UI.customBody(work) else body = table.concat(work, "\n") end
+  prevLabel:SetText(merged and "미리보기 (실제 매크로 · 조건 줄을 한 줄로 합침)" or "미리보기 (실제 매크로)")
   local n, lim = #body, UI.MACRO_LIMIT
   countText:SetText(("%d / %d"):format(n, lim))
   local col = n > lim and { 0.9, 0.35, 0.32 } or (n > lim * 0.85 and { 0.9, 0.75, 0.2 } or { 0.45, 0.85, 0.55 })

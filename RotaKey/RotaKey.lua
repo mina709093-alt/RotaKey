@@ -128,9 +128,203 @@ local function seqNames(list)
     return table.concat(names, ", ")
 end
 
+-- 상세옵션 줄 → 실제 매크로 ------------------------------------------------
+-- 1) 같은 명령(/cast, /use)이 연달아 오고 그중 조건 붙은 줄이 있으면 한 줄로 합칩니다.
+--      /cast 하급 치유의 물결 + /cast [mod:shift] 치유의 물결 + /cast [mod:ctrl] 연쇄 치유
+--      → /cast [mod:ctrl] 연쇄 치유; [mod:shift] 치유의 물결; 하급 치유의 물결
+--    따로 두면 조건 없는 줄이 먼저 시전되고 전역 쿨타임 때문에 아래 줄은 동작하지 않습니다.
+-- 2) "마우스 올린 대상 (없으면 현재 대상)" 줄 [@mouseover,조건][] 을 바르게 고칩니다.
+--      편집기에서 고른 조건(Shift 등)은 줄 전체 조건이고, 아군/적/살아 있음은 마우스 대상 조건입니다.
+--      /cast [@mouseover,mod:shift][] 질병 치료 → /cast [mod:shift,@mouseover,help,nodead][mod:shift] 질병 치료
+--    그대로 두면 [@mouseover]는 늘 맞아서 [] 쪽(현재 대상)으로 가지 않고, Shift 조건도 [] 때문에 무시됩니다.
+-- 순서: 수정키(mod) 조건 → (수정키가 많은 것, Ctrl, Alt, Shift) → 그 밖의 조건(줄 순서) → 조건 없는 것(맨 뒤)
+-- 저장된 줄(g.lines)은 그대로 두고, 게임에 넣는 매크로 글에서만 바꿉니다.
+local MERGE_CMD = { ["/cast"] = true, ["/use"] = true }
+-- 대상(마우스를 올린 유닛)의 상태를 보는 조건
+local TARGET_COND = { help = true, harm = true, dead = true, nodead = true, exists = true, noexists = true }
+
+-- 이름으로 찾은 주문이 전역 쿨타임 없는 스킬이면 합치지 않음 (따로 두어야 같이 나감)
+local function isFreeName(name)
+    if not (C_Spell and C_Spell.GetSpellInfo) then return false end
+    local ok, info = pcall(C_Spell.GetSpellInfo, name)
+    local id = ok and type(info) == "table" and info.spellID
+    if not id or isSecret(id) then return false end
+    local ok2, free = pcall(isFreeSpell, id)
+    return ok2 and free and true or false
+end
+
+-- 주문이 아군용인지 적용인지 ("help" / "harm" / nil). 이 클라이언트에 함수가 없으면 nil
+local function spellKind(name)
+    local checks = {
+        { C_Spell and C_Spell.IsSpellHelpful, "help" }, { IsHelpfulSpell, "help" },
+        { C_Spell and C_Spell.IsSpellHarmful, "harm" }, { IsHarmfulSpell, "harm" },
+    }
+    for _, c in ipairs(checks) do
+        if type(c[1]) == "function" then
+            local ok, v = pcall(c[1], name)
+            if ok and v and not isSecret(v) then return c[2] end
+        end
+    end
+end
+
+local function tokens(inner)
+    local t = {}
+    for tok in inner:gmatch("[^,]+") do
+        tok = strtrim(tok)
+        if tok ~= "" then t[#t + 1] = tok end
+    end
+    return t
+end
+
+local function isTargetTok(tok)
+    return tok:sub(1, 1) == "@" or tok:lower():find("^target=") ~= nil
+end
+
+-- 수정키 조건 순위 (작을수록 앞). ctrl 1, alt 2, shift 3, 그냥 mod 4, 수정키 아님 9
+local function modRank(conds)
+    local rank, nmod = 9, 0
+    for _, tok in ipairs(conds) do
+        local l = tok:lower()
+        if l:find("^mod") then
+            nmod = nmod + 1
+            local r = l:find("ctrl") and 1 or (l:find("alt") and 2 or (l:find("shift") and 3 or 4))
+            if r < rank then rank = r end
+        end
+    end
+    return rank, nmod
+end
+
+-- 줄 하나 해석. 합칠 수 있는 줄이면 { cmd, clause, always, rank, nmod, i, fixed }
+local function mergePart(line, i)
+    local cmd, rest = line:match("^(/%a+)%s+(.-)%s*$")
+    cmd = cmd and cmd:lower()
+    if not cmd or not MERGE_CMD[cmd] or rest == "" or rest:find(";", 1, true) then return nil end
+    local groups, pos = {}, 1
+    while true do
+        local s, e, inner = rest:find("^%s*%[([^%]]*)%]", pos)
+        if not s then break end
+        groups[#groups + 1] = tokens(inner)
+        pos = e + 1
+    end
+    local arg = strtrim(rest:sub(pos))
+    if arg == "" or arg:find("[%[%]]") then return nil end
+    if cmd == "/use" and arg:match("^%d+$") then return nil end -- 장비 칸 번호(장신구 등)는 따로 둠
+    if cmd == "/cast" and isFreeName(arg) then return nil end
+    local p = { cmd = cmd, clause = rest, i = i }
+    local mo = false
+    if #groups == 2 and #groups[2] == 0 then
+        for _, tok in ipairs(groups[1]) do
+            local l = tok:lower()
+            if l == "@mouseover" or l == "target=mouseover" then mo = true end
+        end
+    end
+    if mo then
+        -- 마우스오버 + [] : 줄 조건은 양쪽에, 대상 조건은 마우스 쪽에만
+        local whole, tc, hasKind, hasLife = {}, {}, false, false
+        for _, tok in ipairs(groups[1]) do
+            local l = tok:lower()
+            if TARGET_COND[l] then
+                tc[#tc + 1] = tok
+                if l == "help" or l == "harm" then hasKind = true end
+                if l == "dead" or l == "nodead" then hasLife = true end
+            elseif not isTargetTok(tok) then
+                whole[#whole + 1] = tok
+            end
+        end
+        if not hasKind then
+            local k = spellKind(arg)
+            if k then
+                table.insert(tc, 1, k)
+                if not hasLife then table.insert(tc, 2, "nodead") end
+            elseif #tc == 0 then
+                tc[1] = "exists"
+            end
+        end
+        local w = table.concat(whole, ",")
+        local first = (w ~= "" and (w .. ",") or "") .. "@mouseover," .. table.concat(tc, ",")
+        p.clause = "[" .. first .. "][" .. w .. "] " .. arg
+        p.fixed = true
+        p.always = (#whole == 0)
+        p.rank, p.nmod = modRank(whole)
+        return p
+    end
+    p.always = (#groups == 0)
+    local conds = {}
+    for _, g in ipairs(groups) do
+        local n = 0
+        for _, tok in ipairs(g) do
+            if not isTargetTok(tok) then n = n + 1; conds[#conds + 1] = tok end
+        end
+        -- [] 나 [@대상]만 있는 묶음은 늘 맞으므로 조건 없는 것과 같음
+        if n == 0 then p.always = true end
+    end
+    p.rank, p.nmod = modRank(conds)
+    return p
+end
+
+local function mergeOrder(a, b)
+    if a.always ~= b.always then return b.always end
+    if a.rank ~= b.rank then
+        if a.rank == 9 or b.rank == 9 then return a.rank < b.rank end -- 수정키 조건이 먼저
+    end
+    if a.nmod ~= b.nmod then return a.nmod > b.nmod end -- Ctrl+Shift 처럼 수정키가 많은 것 먼저
+    if a.rank ~= b.rank then return a.rank < b.rank end
+    return a.i < b.i
+end
+
+-- 반환: 바꾼 줄 목록, 합친 곳이 있는지
+local function mergeLines(lines)
+    local res, merged = {}, false
+    local i, n = 1, #lines
+    while i <= n do
+        local p = mergePart(lines[i], i)
+        if not p then
+            res[#res + 1] = lines[i]
+            i = i + 1
+        else
+            local run, hasAlways, hasCond = { p }, p.always, not p.always
+            local j = i + 1
+            while j <= n do
+                local q = mergePart(lines[j], j)
+                -- 조건 없는 줄이 둘째로 나오면 거기서 끊음 (합치면 영영 안 쓰이므로 원래대로 둠)
+                if not q or q.cmd ~= p.cmd or (q.always and hasAlways) then break end
+                run[#run + 1] = q
+                if q.always then hasAlways = true else hasCond = true end
+                j = j + 1
+            end
+            if #run > 1 and hasCond then
+                table.sort(run, mergeOrder)
+                local parts = {}
+                for k, r in ipairs(run) do parts[k] = r.clause end
+                res[#res + 1] = p.cmd .. " " .. table.concat(parts, "; ")
+                merged = true
+            else
+                for _, r in ipairs(run) do
+                    res[#res + 1] = r.fixed and (r.cmd .. " " .. r.clause) or lines[r.i]
+                end
+            end
+            i = j
+        end
+    end
+    return res, merged
+end
+
+-- 상세 그룹의 실제 매크로 글. 합친 곳이 있으면 맨 위에 #showtooltip (255자 안일 때만)
+local SHOWTIP = "#showtooltip"
+local function customBody(lines)
+    local res, merged = mergeLines(lines)
+    local body = table.concat(res, "\n")
+    if merged then
+        local hasShow = false
+        for _, l in ipairs(res) do if l:lower():find("^%s*#show") then hasShow = true end end
+        if not hasShow and #body + #SHOWTIP + 1 <= MACRO_LIMIT then body = SHOWTIP .. "\n" .. body end
+    end
+    return body, merged
+end
+
 local function buildBody(g)
     if g.custom and g.lines then
-        return table.concat(g.lines, "\n"), #g.lines
+        return (customBody(g.lines)), #g.lines
     end
     local atk = g.attack and "/startattack\n" or ""
     local conds = condList(g)
@@ -1666,6 +1860,7 @@ RotaKeyUI = {
     DB = function() return DB end,
     G = function() return G() end,
     buildBody = buildBody,
+    customBody = customBody,
     markDirty = markDirty,
     setStatus = setStatus,
     MACRO_LIMIT = MACRO_LIMIT,
